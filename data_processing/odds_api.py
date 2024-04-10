@@ -134,6 +134,8 @@ class OddsAPIExtractor:
         # convert start_time to from utc time to central time
         self.odds_table["start_time"] = pd.to_datetime(self.odds_table["start_time"])
         self.odds_table["start_time"] = self.odds_table["start_time"].dt.tz_convert('US/Central')
+        # remove lines where the game has already started
+        self.odds_table = self.odds_table[self.odds_table["start_time"] > pd.to_datetime('now')]
         self.odds_table = self.odds_table.loc[:, ['id', "sport", "home_team", "away_team", "start_time", "sportsbook", "outcome", "decimal_odds", "update_time"]]
         
     def load_odds(self):
@@ -154,12 +156,10 @@ class OddsAPIExtractor:
         r = self.extract_odds()
         if r != 0:
             return r
-        print(self.extracted_odds[:5])
         r = self.transform_odds()
         if r != 0:
             return r
         r = self.load_odds()
-        print(self.odds_table.head())
         if r != 0:
             return r
         return 0

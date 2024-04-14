@@ -29,7 +29,6 @@ class AvgOdds(Base):
     home_team = Column(String)
     away_team = Column(String)
     start_time = Column(DateTime)
-    sportsbook = Column(String)
     outcome = Column(String)
     decimal_odds = Column(Float)
     update_time = Column(DateTime)

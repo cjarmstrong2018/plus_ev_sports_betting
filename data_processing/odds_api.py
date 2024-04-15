@@ -29,7 +29,7 @@ SPORT_KEYS = [
     # "soccer_usa_mls"
 ]
 
-SQLALCHEMY_DATABASE_URI = 'sqlite:///sports_betting.db'
+SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
 SLEEP_TIME_MINUTES = 5
 
 
@@ -135,14 +135,14 @@ class OddsAPIExtractor:
         self.odds_table["start_time"] = pd.to_datetime(self.odds_table["start_time"])
         self.odds_table["start_time"] = self.odds_table["start_time"].dt.tz_convert('US/Central')
         # remove lines where the game has already started
-        self.odds_table = self.odds_table[self.odds_table["start_time"] > pd.to_datetime('now')]
+        # self.odds_table = self.odds_table[self.odds_table["start_time"].dt.date == datetime.now().date()]
+        self.odds_table = self.odds_table[self.odds_table["start_time"] > pd.to_datetime('now').tz_localize('US/Central')]
         self.odds_table = self.odds_table.loc[:, ['id', "sport", "home_team", "away_team", "start_time", "sportsbook", "outcome", "decimal_odds", "update_time"]]
         
     def load_odds(self):
         """
         Writes odds table to database
         """
-        print(self.odds_table.head())
         self.odds_table.to_sql('all_betting_lines', self.engine, if_exists='replace', index=False)
         return 0
         
@@ -172,6 +172,9 @@ class OddsAPIExtractor:
         end_time = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
         while datetime.now() < end_time:
             self.run_etl()
+            if self.odds_table.empty:
+                print("No more games today, shutting down")
+                break
             time.sleep(SLEEP_TIME_MINUTES * 60)
             
         

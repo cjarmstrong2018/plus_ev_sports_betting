@@ -12,7 +12,7 @@ Session = sessionmaker(bind=engine)
 # Define SQLAlchemy models
 class AllLines(Base):
     __tablename__ = 'all_betting_lines'
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True)
     sport = Column(String)
     home_team = Column(String)
     away_team = Column(String)
@@ -24,7 +24,7 @@ class AllLines(Base):
 
 class AvgOdds(Base):
     __tablename__ = 'avg_odds'
-    id = Column(Integer, primary_key=True)
+    id = Column(String, primary_key=True)
     sport = Column(String)
     home_team = Column(String)
     away_team = Column(String)

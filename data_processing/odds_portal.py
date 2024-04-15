@@ -2,6 +2,7 @@ from datetime import datetime
 import time
 import uuid
 from bs4 import BeautifulSoup
+from dateutil import parser
 import pandas as pd
 import numpy as np
 import selenium
@@ -12,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException
+from sqlalchemy import create_engine
 import os
 from dotenv import load_dotenv
 
@@ -19,6 +21,8 @@ load_dotenv()
 
 ODDS_PORTAL_USERNAME = os.getenv("ODDS_PORTAL_USERNAME")
 ODDS_PORTAL_PASSWORD = os.getenv("ODDS_PORTAL_PASSWORD")
+SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
+SLEEP_TIME_MINUTES = 5
 
 LEAGUE_URLS = {
             "americanfootball_nfl": "https://www.oddsportal.com/american-football/usa/nfl/",
@@ -34,13 +38,13 @@ LEAGUE_URLS = {
             "soccer_france_ligue_one": "https://www.oddsportal.com/soccer/france/ligue-1/",
             "soccer_usa_mls": "https://www.oddsportal.com/soccer/usa/mls/",
             "soccer_germany_bundesliga": "https://www.oddsportal.com/soccer/germany/bundesliga/"
-
         }
 
 
 class OddsPortalScraper:
     def __init__(self, league_urls=LEAGUE_URLS):
         self.league_urls = league_urls
+        self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
         op = webdriver.ChromeOptions()
         op.add_argument(
             "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
@@ -53,6 +57,7 @@ class OddsPortalScraper:
         self.web = webdriver.Chrome(
             service=Service(ChromeDriverManager().install()), options=op
         )
+        self.data = pd.DataFrame()
 
     def odds_portal_login(self):
         self.web.get("https://www.oddsportal.com/login/")
@@ -75,9 +80,8 @@ class OddsPortalScraper:
         table_xpath = '//*[@id="app"]/div[1]/div[1]/div/main/div[3]/div[4]'
         WebDriverWait(self.web, 4).until(
             EC.element_to_be_clickable((By.XPATH, table_xpath)))
-
-        soup = BeautifulSoup(self.web.page_source)
-
+        time.sleep(.5)
+        soup = BeautifulSoup(self.web.page_source, "html.parser")
         rows = soup.find_all("div", class_="eventRow flex w-full flex-col text-xs")
         entries = []
         event_date = datetime.now().date()
@@ -86,28 +90,31 @@ class OddsPortalScraper:
                 date_tag = row.find("div", class_="text-black-main font-main w-full truncate text-xs font-normal leading-5")
                 if date_tag is not None:
                     date_tag = date_tag.text
+                    if 'yesterday' in date_tag.lower():
+                        continue
                     if 'today' in date_tag.lower():
                         continue
                     if 'tomorrow' in date_tag.lower():
-                        event_date = datetime.now() + pd.Timedelta(days=1)
+                        event_date = datetime.today() + pd.Timedelta(days=1)
                     else:
-                        event_date = datetime.strptime(date_tag, "%d %b %Y")
-                        
+                        try:
+                            event_date = parser.parse(date_tag).date()
+                        except:
+                            print(date_tag, "not parsed")
+                            continue
                 teams = row.find_all("p", class_="participant-name truncate")
                 home_team, away_team = teams[0].text, teams[1].text
                 time_div = row.find("div", class_="next-m:flex-col min-md:flex-row min-md:gap-1 text-gray-dark flex flex-row self-center text-[12px] w-full")
-                time = time_div.find('p').text
+                start_time = time_div.find('p').text
+                start_time = datetime.time(datetime.strptime(start_time, "%H:%M"))
                 odds = row.find_all("div", class_="flex-center border-black-borders min-w-[60px] flex-col gap-1 pb-0.5 pt-0.5 relative")
                 odds = [odd.find("p").text for odd in odds] 
-                print(odds)
                 if len(odds) == 3:
                     home_odds, draw_odds, away_odds = odds
                 else:
                     home_odds, away_odds = odds
                     draw_odds = None
-                if 'i' in time.lower():
-                    continue
-                start_time  = event_date.replace(hour=int(time.split(":")[0]), minute=int(time.split(":")[1]), second=0)
+                start_time = datetime.combine(event_date, start_time)
                 home_entry = {
                     'id': uuid.uuid4(),
                     "sport": sport_key, # sport key
@@ -147,11 +154,15 @@ class OddsPortalScraper:
                 continue
         # select only rows that are today and not tomorrow or beyond
         df = pd.DataFrame(entries)
+        if df.empty:
+            return df
+        df['start_time'] = pd.to_datetime(df['start_time'])
+        df = df[df['start_time'].dt.date == datetime.now().date()]
+        df = df[df['start_time'].dt.time > datetime.now().time()]
+        df = df.reset_index(drop = True)
         return df
-        today = datetime.now().date()
-        # return  df[df['start_time'].dt.date == today]
     
-    def get_odds_for_leagues(self):
+    def extract_odds(self):
         dfs = []
         for league, url in self.league_urls.items():
             try:
@@ -161,20 +172,41 @@ class OddsPortalScraper:
                 continue
             dfs.append(league_df)
         df = pd.concat(dfs)
-        return df
+        df = df.reset_index(drop=True)
+        self.data = df
+        return 0
 
-    def transform_avg_odds(self):
-        pass
+    def transform_odds(self):
+        """
+        If any transformation needs to be done, it can be added here
+        """
+        self.data['id'] = self.data['id'].astype(str)
+        self.data['decimal_odds'] = self.data['decimal_odds'].astype(float)
+        self.data['update_time'] = pd.to_datetime(self.data['update_time'])
 
-    def save_avg_odds(self):
-        self.transformed_df.to_sql()
+    def load_odds(self):
+        print("Data: ", self.data.head())
+        self.data.to_sql('avg_odds', self.engine, if_exists='replace', index=False)
 
+    def run_etl(self):
+        r = self.extract_odds()
+        if r != 0:
+            return r
+        r = self.transform_odds()
+        if r != 0:
+            return r
+        r = self.load_odds()
+        if r != 0:
+            return r
+        return 0
+        
     def run(self):
-        # self.odds_portal_login()
-        # While datetime < shutdown time
-        self.get_odds_for_leagues()
-        self.transform_avg_odds()
-        self.save_avg_odds()
+        self.odds_portal_login()
+        end_time = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
+        while datetime.now() < end_time:
+            self.run_etl()
+            time.sleep(SLEEP_TIME_MINUTES * 60)
+            
 
 
 if __name__ == "__main__":

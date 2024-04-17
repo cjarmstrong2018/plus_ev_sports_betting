@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import ElementClickInterceptedException
-from sqlalchemy import create_engine
+from utils import get_sqlalchemy_engine
 import os
 from dotenv import load_dotenv
 
@@ -44,7 +44,7 @@ LEAGUE_URLS = {
 class OddsPortalScraper:
     def __init__(self, league_urls=LEAGUE_URLS):
         self.league_urls = league_urls
-        self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
+        self.engine = get_sqlalchemy_engine()
         op = webdriver.ChromeOptions()
         op.add_argument(
             "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"

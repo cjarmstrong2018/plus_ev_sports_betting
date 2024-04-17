@@ -7,7 +7,7 @@ import requests
 import json
 import pandas as pd
 from pandas import json_normalize
-from sqlalchemy import create_engine
+from utils import get_sqlalchemy_engine
 
 
 load_dotenv()
@@ -29,7 +29,6 @@ SPORT_KEYS = [
     # "soccer_usa_mls"
 ]
 
-SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
 SLEEP_TIME_MINUTES = 5
 
 
@@ -67,7 +66,7 @@ class OddsAPI(object):
 class OddsAPIExtractor:
     def __init__(self, api_key=ODDS_API_KEY):
         self.api = OddsAPI(api_key)
-        self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
+        self.engine = get_sqlalchemy_engine()
         self.extracted_sports = None
         self.sports_table = None
         self.extracted_odds = None

@@ -32,6 +32,26 @@ class AvgOdds(Base):
     outcome = Column(String)
     decimal_odds = Column(Float)
     update_time = Column(DateTime)
+    
+class PlusEvBets(Base):
+    __tablename__ = 'plus_ev_bets'
+    id = Column(String, primary_key=True)
+    sport = Column(String)
+    start_time = Column(DateTime)
+    home_team = Column(String)
+    away_team = Column(String)
+    outcome = Column(String)
+    sportsbook = Column(String)
+    decimal_odds = Column(Float)
+    avg_odds = Column(Float)
+    best_odds_update_time = Column(DateTime)
+    avg_odds_update_time = Column(DateTime)
+    mean_implied_probability = Column(Float)
+    best_implied_probability = Column(Float)
+    thresh = Column(Float)
+    predicted_probability = Column(Float)
+    kelly = Column(Float)
+    half_kelly = Column(Float)
 
 
 

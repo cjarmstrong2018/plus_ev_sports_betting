@@ -16,6 +16,30 @@ SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
 ALPHA = os.getenv("ALPHA")
 ALPHA = 0.05
 
+BOOKMAKERS = {
+    "BetOnline.ag": {"bookmaker_key": "betonlineag", "can_bet": False},
+    "BetMGM": {"bookmaker_key": "betmgm", "can_bet": True},
+    "BetRivers": {"bookmaker_key": "betrivers", "can_bet": True},
+    "BetUS": {"bookmaker_key": "betus", "can_bet": False},
+    "Bovada": {"bookmaker_key": "bovada", "can_bet": True},
+    "DraftKings": {"bookmaker_key": "draftkings", "can_bet": True},
+    "FanDuel": {"bookmaker_key": "fanduel", "can_bet": True},
+    "LowVig.ag": {"bookmaker_key": "lowvig", "can_bet": False},
+    "MyBookie.ag": {"bookmaker_key": "mybookieag", "can_bet": False},
+    "PointsBet (US)": {"bookmaker_key": "pointsbetus", "can_bet": True},
+    "SuperBook": {"bookmaker_key": "superbook", "can_bet": False},
+    "Unibet": {"bookmaker_key": "unibet_us", "can_bet": False},
+    "William Hill (Caesars)": {"bookmaker_key": "williamhill_us", "can_bet": True},
+    "WynnBET": {"bookmaker_key": "wynnbet", "can_bet": False},
+    "betPARX": {"bookmaker_key": "betparx", "can_bet": False},
+    "ESPN BET": {"bookmaker_key": "espnbet", "can_bet": True},
+    "Fliff": {"bookmaker_key": "fliff", "can_bet": False},
+    "Hard Rock Bet": {"bookmaker_key": "hardrockbet", "can_bet": False},
+    "SI Sportsbook": {"bookmaker_key": "sisportsbook", "can_bet": False},
+    "Tipico": {"bookmaker_key": "tipico_us", "can_bet": False},
+    "Wind Creek (Betfred PA)": {"bookmaker_key": "windcreek", "can_bet": False},
+}
+
 
 class LineFilter(object):
     def __init__(self):
@@ -32,8 +56,8 @@ class LineFilter(object):
         self.all_betting_lines = pd.DataFrame()
         self.merged_df = pd.DataFrame()
         self.best_lines = pd.DataFrame()
-        self.plus_ev_bets = pd.DataFrame()
         self.merged_df = pd.DataFrame()
+        self.plus_ev_bets = pd.DataFrame()
         
     def extract(self):
         """
@@ -51,15 +75,17 @@ class LineFilter(object):
         lines to the database in the table plus_ev_bets. Also assigns an ID to each plus_ev line to 
         track the bets and only alert me on new bets that hit
         """
+        self.filter_bookmakers()
         self.compute_best_lines()
         self.merge_tables()
+        self.necessary_calculations()
         self.find_plus_ev_bets()
-        self.calculate_probabilities_and_kelly_criterion()
     
     def load(self):
         """
         Writes the plus_ev_bets table to the database
         """
+        self.merged_df.to_sql('best_lines_model_probabilities', self.engine, if_exists='replace', index=False)
         self.plus_ev_bets.to_sql('plus_ev_bets', self.engine, if_exists='replace', index=False)
 
     def merge_tables(self) -> None:
@@ -86,31 +112,24 @@ class LineFilter(object):
         idx_max = self.all_betting_lines.groupby(['sport', 'home_team', 'away_team', 'start_time', 'outcome'])['decimal_odds'].idxmax()
         self.best_lines =  self.all_betting_lines.iloc[idx_max].sort_values('start_time')
         
+    def necessary_calculations(self):
+        """
+        Uses model to calculate the predicted probability of each line and then calculates the kelly criterion for each line
+        """
+        self.merged_df['mean_implied_probability'] = 1 / self.merged_df['avg_odds']
+        self.merged_df['best_implied_probability'] = 1 / self.merged_df['decimal_odds']
+        self.merged_df['predicted_probability'] = self.merged_df['mean_implied_probability'] - self._alpha
+        self.merged_df['thresh'] = 1 / (self.merged_df['mean_implied_probability'] - self._alpha)
+        self.merged_df['expected_value'] = self.merged_df['predicted_probability'] * (self.merged_df['decimal_odds'] - 1)
+        self.merged_df['kelly'] = self.merged_df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds']), axis=1)
+        self.merged_df['half_kelly'] = self.merged_df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds'], kelly_size=0.5), axis=1)
         
     def find_plus_ev_bets(self) -> None:
         """
         Filters the merged_df for lines that are beyond the necessary threshold from the mean odds
         and calculates the kelly criterion for each line
         """
-        df = self.merged_df.copy()
-        df['mean_implied_probability'] = 1 / df['avg_odds']
-        df['best_implied_probability'] = 1 / df['decimal_odds']
-        df['thresh'] = 1 / (df['mean_implied_probability'] - self._alpha)
-        df = df[df['decimal_odds'] >= df['thresh']]
-        self.plus_ev_bets = df
-        
-    def calculate_probabilities_and_kelly_criterion(self):
-        """
-        Calculates the implied probability for each line and then calculates the kelly criterion for each line
-        """
-        df = self.plus_ev_bets.copy()
-        implied = df['mean_implied_probability']
-        implied.name = 'implied_probability'
-        df['predicted_probability'] = self.model.predict(implied)
-        df['kelly'] = df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds']), axis=1)
-        df['half_kelly'] = df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds'], kelly_size=0.5), axis=1)
-        self.plus_ev_bets = df
-        
+        self.plus_ev_bets = self.merged_df[self.merged_df['decimal_odds'] > self.merged_df['thresh']]
         
     def run_etl(self):
         """
@@ -120,59 +139,16 @@ class LineFilter(object):
         self.transform()
         self.load()
         
-        
-    # def find_trades(self, df) -> pd.DataFrame:
-    #     """
-    #     Runs the necessary calculations on a merged df of mean and highest
-    #     odds and returns a DataFrame of all trades spotted
-
-    #     Args:
-    #         df (pd.DataFrame): DataFrame from self.create_league_format
-
-    #     Returns:
-    #         pd.DataFrame: a DataFrame ready to be iterated over to send alerts to
-    #         the channel
-    #     """
-    #     df = df[df['date'] < central_time_now() + pd.Timedelta(3, 'h')]
-    #     print(f"Checking {len(df)} lines within window")
-    #     self.valid_lines += len(df)
-    #     df['mean_implied_probability'] = 1 / df['mean_odds']
-    #     df['highest_implied_probability'] = 1 / df['odds']
-    #     df['thresh'] = 1 / (df['mean_implied_probability'] - self._alpha)
-    #     df = df[df['odds'] >= df['thresh']]
-    #     return df
-
-    # def necessary_calculations(self, df) -> pd.DataFrame:
-    #     """
-    #     Performs necessary calculations before iterating through df to send 
-    #     notifications
-
-    #     Args:
-    #         df (pd.DataFrame): DataFrame of identified trades
-
-    #     Returns:
-    #         pd.DataFrame: original df but with updated columns for notifications
-    #     """
-    #     df['american_thresh'] = df['thresh'].apply(
-    #         lambda x: convert_odds(x, cat_in="dec")['American'])
-    #     df['american_thresh'] = df['american_thresh'].round()
-    #     df['american_odds_best'] = df['odds'].apply(
-    #         lambda x: convert_odds(x, cat_in="dec")['American'])
-    #     df['american_odds_best'] = df['american_odds_best'].round()
-
-    #     implied = df['mean_implied_probability']
-    #     implied.name = 'implied_probability'
-    #     df['predicted_prob'] = self.model.predict(implied)
-    #     df['kelly'] = df.apply(lambda x: basic_kelly_criterion(
-    #         x['predicted_prob'], x['odds']), axis=1)
-    #     df['half_kelly'] = df.apply(lambda x: basic_kelly_criterion(
-    #         x['predicted_prob'], x['odds'], kelly_size=0.5), axis=1)
-
-    #     df['id'] = df.apply(lambda x: self.generate_game_id(x), axis=1)
-    #     current_bankroll = self.current_bankroll()
-    #     df['cja_wager'] = df['kelly'] * current_bankroll
-    #     return df
-
+    def filter_bookmakers(self):
+        """
+        Filters the lines for those that are from bookmakers that I can bet with
+        """
+        book_makers = pd.DataFrame(BOOKMAKERS).T
+        book_makers.index.name = 'sportsbook'
+        book_makers = book_makers.reset_index(drop = False)
+        book_makers = book_makers[book_makers['can_bet']]['sportsbook'].to_list()
+        self.all_betting_lines = self.all_betting_lines[self.all_betting_lines['sportsbook'].isin(book_makers)]
+        self.all_betting_lines = self.all_betting_lines.reset_index(drop = True)
 
         
         

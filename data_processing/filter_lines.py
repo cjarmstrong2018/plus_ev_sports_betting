@@ -1,18 +1,21 @@
+from datetime import datetime
 import pickle
+import time
 import traceback
 import pandas as pd
 import sqlalchemy
 from sqlalchemy import create_engine
-# import fuzzy_pandas as fpd
 import recordlinkage
 import os
 from dotenv import load_dotenv
+from fuzzywuzzy import fuzz 
+from fuzzywuzzy import process
 
 from utils import basic_kelly_criterion
 
 load_dotenv()
 SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
-
+TIME_SLEEP_MINUTES = 3
 ALPHA = os.getenv("ALPHA")
 ALPHA = 0.05
 
@@ -93,6 +96,7 @@ class LineFilter(object):
         mergest the two tables best_lines and avg_odds into a single table. Currently this is done using an exact only approach but eventually this will be done
         using fuzzy_wuzzy to determine the best matches for each line
         """
+        # self.clean_team_names()
         best_lines = self.best_lines.copy()
         best_lines = best_lines[['sport', 'home_team', 'away_team','start_time', 'sportsbook', 'outcome', 'decimal_odds', 'update_time']]
         best_lines = best_lines.rename(columns={'update_time': 'best_odds_update_time'})
@@ -120,7 +124,7 @@ class LineFilter(object):
         self.merged_df['best_implied_probability'] = 1 / self.merged_df['decimal_odds']
         self.merged_df['predicted_probability'] = self.merged_df['mean_implied_probability'] - self._alpha
         self.merged_df['thresh'] = 1 / (self.merged_df['mean_implied_probability'] - self._alpha)
-        self.merged_df['expected_value'] = self.merged_df['predicted_probability'] * (self.merged_df['decimal_odds'] - 1)
+        self.merged_df['expected_value'] = (self.merged_df['predicted_probability'] * (self.merged_df['decimal_odds'] - 1)) + ((1 - self.merged_df['predicted_probability']) * -1)
         self.merged_df['kelly'] = self.merged_df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds']), axis=1)
         self.merged_df['half_kelly'] = self.merged_df.apply(lambda x: basic_kelly_criterion(x['predicted_probability'], x['decimal_odds'], kelly_size=0.5), axis=1)
         
@@ -150,5 +154,46 @@ class LineFilter(object):
         self.all_betting_lines = self.all_betting_lines[self.all_betting_lines['sportsbook'].isin(book_makers)]
         self.all_betting_lines = self.all_betting_lines.reset_index(drop = True)
 
+    def run(self):
+        """
+        Runs the full ETL process every 5 minutes
+        """
+        end_time = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
+        self.extract_sports()
+        while datetime.now() < end_time:
+            self.run_etl()
+            if self.all_betting_lines.empty:
+                print("No more games today, shutting down")
+                break
+            time.sleep(TIME_SLEEP_MINUTES * 60)
+      
+    def clean_team_names(self):
+        """
+        Uses fuzzywuzzy to clean the team names in the avg_odds table, 
+        extracts the set of teams for each sport and then uses fuzzywuzzy process to match the team names
+        """
+        self.best_lines['home_team'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['home_team'], x['sport']), axis=1)
+        self.best_lines['away_team'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['away_team'], x['sport']), axis=1)
+        self.best_lines['outcome'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['outcome'], x['sport']), axis=1)
         
+        
+    def lambda_fuzzy_wuzzy(self, team_name, sport) -> str:
+        """
+        Helper function for fuzzywuzzy to match team names
+        """
+        teams = self.all_betting_lines[self.all_betting_lines['sport'] == sport]['home_team'].unique()
+        print(teams)
+        if team_name.lower() == 'draw':
+            return 'draw'
+        out = process.extractOne(team_name, teams, scorer=fuzz.token_set_ratio, score_cutoff= 75)
+        print(team_name, out)
+        if out is None:
+            return None
+        else:
+            return out[0]
+      
+if __name__ == "__main__":
+    lf = LineFilter()
+    lf.run_etl()
+    print("ETL process complete")  
         

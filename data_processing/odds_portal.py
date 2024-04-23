@@ -30,7 +30,6 @@ LEAGUE_URLS = {
             "basketball_nba": "https://www.oddsportal.com/basketball/usa/nba/",
             "basketball_ncaab": "https://www.oddsportal.com/basketball/usa/ncaa/",
             "americanfootball_ncaaf": "https://www.oddsportal.com/american-football/usa/ncaa/",
-            "hockey_nhl": "https://www.oddsportal.com/hockey/usa/nhl/",
             "soccer_epl": "https://www.oddsportal.com/soccer/england/premier-league/",
             "soccer_spain_la_liga": "https://www.oddsportal.com/soccer/spain/laliga/",
             "soccer_italy_serie_a": "https://www.oddsportal.com/soccer/italy/serie-a/",
@@ -180,13 +179,17 @@ class OddsPortalScraper:
         """
         If any transformation needs to be done, it can be added here
         """
-        self.data['id'] = self.data['id'].astype(str)
-        self.data['decimal_odds'] = self.data['decimal_odds'].astype(float)
-        self.data['update_time'] = pd.to_datetime(self.data['update_time'])
+        try:
+            self.data['id'] = self.data['id'].astype(str)
+            self.data['decimal_odds'] = self.data['decimal_odds'].astype(float)
+            self.data['update_time'] = pd.to_datetime(self.data['update_time'])
+            return 0
+        except:
+            return -1
 
     def load_odds(self):
-        print("Data: ", self.data.head())
-        self.data.to_sql('avg_odds', self.engine, if_exists='replace', index=False)
+        r = self.data.to_sql('avg_odds', self.engine, if_exists='replace', index=False)
+        print(f"Loaded {r} rows into avg_odds")
 
     def run_etl(self):
         r = self.extract_odds()

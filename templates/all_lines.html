@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <head>
+
+      <title>Random Walks Positive Drift</title>
+      <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='styles.css') }}"
+      />
+    </head>
+    <body>
+      <body>
+        {% include 'navbar.html' %}
+
+    
+      <div id="content">
+        <div id="header">
+          <h1>Random Walks Positive Drift</h1>
+        </div>
+
+  
+  </head>
+  <body>
+    <h1>Best Lines For All Events</h1>
+    <p>
+      Now I don't think you should bet on these, but if you so desire to be the
+      little gambling degen that you are, I would use these lines.
+    </p>
+    <p>
+      Here you will also see the expected value, kelly criterion, and half kelly
+      criterion for each bet. If you don't know what those are, I would suggest
+      you look them up before you start betting. bets that I think have some
+      positive EV will be highlighted in green
+    </p>
+
+    <table id="bets-table">
+      <thead>
+        <tr>
+          <th>
+            Sport
+            <select class="filter-select" id="filter-sport"></select>
+          </th>
+          <th>Start Time</th>
+          <th>
+            Home Team
+            <select class="filter-select" id="filter-home-team"></select>
+          </th>
+          <th>
+            Away Team
+            <select class="filter-select" id="filter-away-team"></select>
+          </th>
+          <th>
+            Outcome
+            <select class="filter-select" id="filter-outcome"></select>
+          </th>
+
+          <th>
+            Sportsbook
+            <select class="filter-select" id="filter-sportsbook"></select>
+          </th>
+          <th>Decimal Odds</th>
+          <th>Avg Odds</th>
+          <th>Mean Implied Probability</th>
+          <th>Best Implied Probability</th>
+          <th>Predicted Probability</th>
+          <th>Thresh</th>
+          <th>Expected Value</th>
+          <th>Kelly</th>
+          <th>Half Kelly</th>
+          <th>Best Odds Update Time</th>
+          <th>Avg Odds Update Time</th>
+
+          <!-- Add filter dropdowns for other columns as needed -->
+        </tr>
+      </thead>
+      <tbody>
+        {% for bet in bets %}
+        <tr>
+          <td>{{ bet.sport }}</td>
+          <td>{{ bet.start_time}}</td>
+          <td>{{ bet.home_team }}</td>
+          <td>{{ bet.away_team }}</td>
+          <td>{{ bet.outcome }}</td>
+          <td>{{ bet.sportsbook }}</td>
+          <td>{{ bet.decimal_odds }}</td>
+          <td>{{ bet.avg_odds }}</td>
+          <td>{{ bet.mean_implied_probability }}</td>
+          <td>{{ bet.best_implied_probability }}</td>
+          <td>{{ bet.predicted_probability }}</td>
+          <td>{{ bet.thresh }}</td>
+          <td>{{ bet.expected_value }}</td>
+          <td>{{ bet.kelly }}</td>
+          <td>{{ bet.half_kelly }}</td>
+          <td>{{ bet.best_odds_update_time }}</td>
+          <td>{{ bet.avg_odds_update_time }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        let filterSelects = document.querySelectorAll(".filter-select");
+
+        function updateFilters() {
+          filterSelects.forEach((select) => {
+            let columnIndex = select.parentNode.cellIndex;
+            let tableRows = document.querySelectorAll("#bets-table tbody tr");
+            let options = new Set(["All"]); // Include "All" option initially
+
+            tableRows.forEach((row) => {
+              let cell = row.cells[columnIndex];
+              if (cell) {
+                let cellValue = cell.textContent || cell.innerText;
+                options.add(cellValue.trim());
+              }
+            });
+
+            // Remove existing options
+            while (select.firstChild) {
+              select.removeChild(select.firstChild);
+            }
+
+            // Add new options
+            options.forEach((option) => {
+              let optionElement = document.createElement("option");
+              optionElement.value = option;
+              optionElement.textContent = option;
+              select.appendChild(optionElement);
+            });
+          });
+        }
+
+        // Initial update of filters
+        updateFilters();
+
+        // Listen for changes in table content and update filters
+        let observer = new MutationObserver(updateFilters);
+        observer.observe(document.querySelector("#bets-table tbody"), {
+          childList: true,
+        });
+
+        filterSelects.forEach((select) => {
+          select.addEventListener("change", function () {
+            let columnIndex = this.parentNode.cellIndex;
+            let filterValue = this.value.toUpperCase();
+            let tableRows = document.querySelectorAll("#bets-table tbody tr");
+
+            tableRows.forEach((row) => {
+              let cell = row.cells[columnIndex];
+              if (cell) {
+                let cellValue = cell.textContent || cell.innerText;
+                if (
+                  filterValue === "ALL" ||
+                  cellValue.toUpperCase() === filterValue ||
+                  filterValue === ""
+                ) {
+                  row.style.display = "";
+                } else {
+                  row.style.display = "none";
+                }
+              }
+            });
+          });
+        });
+      });
+    </script>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        function updateFilters() {
+          // JavaScript code for updating filters
+        }
+
+        // JavaScript code for highlighting rows based on Expected Value
+        let expectedValueColumnIndex = 12; // Adjust as needed
+        let tableRows = document.querySelectorAll("#bets-table tbody tr");
+        tableRows.forEach((row) => {
+          let cell = row.cells[expectedValueColumnIndex];
+          if (cell) {
+            let expectedValue = parseFloat(cell.textContent.trim());
+            if (expectedValue > 0) {
+              row.classList.add("positive-value");
+            } else {
+              row.classList.remove("positive-value");
+            }
+          }
+        });
+      });
+    </script>
+  </body>
+</html>

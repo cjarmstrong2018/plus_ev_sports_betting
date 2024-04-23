@@ -1,30 +1,24 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Recommended Bets</title>
-    <style>
-      table {
-        border-collapse: collapse;
-        width: 100%;
-      }
+    <head>
 
-      th,
-      td {
-        border: 1px solid #dddddd;
-        text-align: left;
-        padding: 8px;
-      }
+      <title>Random Walks Positive Drift</title>
+      <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='styles.css') }}"
+      />
+    </head>
+    <body>
+      <body>
+        {% include 'navbar.html' %}
 
-      th {
-        background-color: #f2f2f2;
-      }
-
-      .filter-select {
-        width: 50%;
-        padding: 5px;
-        box-sizing: border-box;
-      }
-    </style>
+    
+      <div id="content">
+        <div id="header">
+          <h1>Random Walks Positive Drift</h1>
+        </div>
+  
   </head>
   <body>
     <h1>Recommended Bets</h1>
@@ -72,7 +66,7 @@
         {% for bet in bets %}
         <tr>
           <td>{{ bet.sport }}</td>
-          <td>{{ bet.start_time }}</td>
+          <td>{{ bet.start_time}}</td>
           <td>{{ bet.home_team }}</td>
           <td>{{ bet.away_team }}</td>
           <td>{{ bet.outcome }}</td>

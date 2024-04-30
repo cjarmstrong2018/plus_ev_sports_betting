@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 import os
 import time
 import uuid 
@@ -54,6 +55,8 @@ class OddsAPI(object):
 
 class OddsAPIExtractor:
     def __init__(self, api_key=ODDS_API_KEY):
+        self.logger = logging.getLogger("OddsAPIExtractor")
+        self.configure_logger()
         self.api = OddsAPI(api_key)
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
         
@@ -61,6 +64,13 @@ class OddsAPIExtractor:
         self.sports_table = pd.DataFrame()
         self.extracted_odds = pd.DataFrame()
         self.odds_table = pd.DataFrame()
+        
+    def configure_logger(self):
+        self.logger.setLevel(logging.INFO)
+        formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s')
+        ch = logging.StreamHandler()
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
         
     def extract_sports(self):
         """
@@ -71,6 +81,7 @@ class OddsAPIExtractor:
         try:
             sports = self.get_sports()
             self.extracted_sports = sports
+            self.logger.debug(f"Extracted {len(sports)} sports")
             return 0
         except:
             return -1
@@ -118,6 +129,7 @@ class OddsAPIExtractor:
         # remove games that are not today
         self.odds_table = self.odds_table[self.odds_table["start_time"].dt.date == pd.to_datetime('now').date()]
         self.odds_table = self.odds_table.loc[:, ['id', "sport", "home_team", "away_team", "start_time", "sportsbook", "outcome", "decimal_odds", "update_time"]]
+        self.logger.debug(f"Transformed {len(self.odds_table)} odds entries")
         return 0
         
     def load_odds(self):
@@ -125,7 +137,7 @@ class OddsAPIExtractor:
         Writes odds table to database
         """
         r = self.odds_table.to_sql('all_betting_lines', self.engine, if_exists='replace', index=False)
-        print(f"Loaded {r} rows into all_betting_lines")
+        self.logger.info(f"Loaded {r} rows into all_betting_lines")
         
         return 0
         

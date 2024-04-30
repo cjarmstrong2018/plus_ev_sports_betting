@@ -19,10 +19,6 @@ engine = create_engine(SQLALCHEMY_DATABASE_URI)
 def home():
     return render_template("home.html")
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 @app.route('/about')
 def about():
     return render_template('about.html')
@@ -87,4 +83,4 @@ def serve_image(filename):
     return send_from_directory(app.static_folder + '/images', filename)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host = '0.0.0.0', port = 5000)

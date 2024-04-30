@@ -1,23 +1,25 @@
 from datetime import datetime
+import hashlib
 import pickle
 import time
-import traceback
+import numpy as np
 import pandas as pd
-import sqlalchemy
 from sqlalchemy import create_engine
-import recordlinkage
 import os
 from dotenv import load_dotenv
 from fuzzywuzzy import fuzz 
 from fuzzywuzzy import process
+from DiscordAlerts import DiscordAlert
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 from utils import basic_kelly_criterion
 
 load_dotenv()
 SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
+WEBSITE_URL = ''
 TIME_SLEEP_MINUTES = 3
 ALPHA = os.getenv("ALPHA")
-ALPHA = 0.05
 
 BOOKMAKERS = {
     "BetOnline.ag": {"bookmaker_key": "betonlineag", "can_bet": False},
@@ -55,12 +57,16 @@ class LineFilter(object):
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
         self._alpha = float(ALPHA)
         self.model = pickle.load(open('model.pkl', 'rb'))
+        self.discord = DiscordAlert()
+        self.team_names = pd.DataFrame()
         self.average_odds = pd.DataFrame()
         self.all_betting_lines = pd.DataFrame()
         self.merged_df = pd.DataFrame()
         self.best_lines = pd.DataFrame()
         self.merged_df = pd.DataFrame()
         self.plus_ev_bets = pd.DataFrame()
+        self.reccommended_bets_archive = pd.DataFrame()
+        self.bets_to_reccommend = pd.DataFrame()
         
     def extract(self):
         """
@@ -69,6 +75,11 @@ class LineFilter(object):
         """
         self.all_betting_lines = pd.read_sql_query("SELECT * from all_betting_lines", self.engine)
         self.average_odds = pd.read_sql_query('SELECT * FROM avg_odds', self.engine)
+        self.team_names = pd.read_sql('SELECT * FROM team_names', self.engine)
+        try:
+            self.reccommended_bets_archive = pd.read_sql('SELECT * FROM reccommended_bets_archive', self.engine)
+        except:
+            self.reccommended_bets_archive = pd.DataFrame()
 
     def transform(self):
         """
@@ -83,20 +94,23 @@ class LineFilter(object):
         self.merge_tables()
         self.necessary_calculations()
         self.find_plus_ev_bets()
-    
+        self.get_bets_to_notify()
+        self.merge_with_reccommended_bets_archive()
+        
     def load(self):
         """
         Writes the plus_ev_bets table to the database
         """
         self.merged_df.to_sql('best_lines_model_probabilities', self.engine, if_exists='replace', index=False)
         self.plus_ev_bets.to_sql('plus_ev_bets', self.engine, if_exists='replace', index=False)
-
+        self.reccommended_bets_archive.to_sql('reccommended_bets_archive', self.engine, if_exists='replace', index=False)
+        
     def merge_tables(self) -> None:
         """
         mergest the two tables best_lines and avg_odds into a single table. Currently this is done using an exact only approach but eventually this will be done
         using fuzzy_wuzzy to determine the best matches for each line
         """
-        # self.clean_team_names()
+        self.clean_team_names()
         best_lines = self.best_lines.copy()
         best_lines = best_lines[['sport', 'home_team', 'away_team','start_time', 'sportsbook', 'outcome', 'decimal_odds', 'update_time']]
         best_lines = best_lines.rename(columns={'update_time': 'best_odds_update_time'})
@@ -115,6 +129,7 @@ class LineFilter(object):
         # select the best line for each outcome using group by
         idx_max = self.all_betting_lines.groupby(['sport', 'home_team', 'away_team', 'start_time', 'outcome'])['decimal_odds'].idxmax()
         self.best_lines =  self.all_betting_lines.iloc[idx_max].sort_values('start_time')
+        print(f"Best lines shape: {self.best_lines.shape}")
         
     def necessary_calculations(self):
         """
@@ -134,6 +149,7 @@ class LineFilter(object):
         and calculates the kelly criterion for each line
         """
         self.plus_ev_bets = self.merged_df[self.merged_df['decimal_odds'] > self.merged_df['thresh']]
+        self.plus_ev_bets['id'] = self.plus_ev_bets.apply(lambda x: self.generate_unique_hash(x['home_team'], x['away_team'], x['outcome'], x['start_time']), axis=1)
         
     def run_etl(self):
         """
@@ -142,6 +158,7 @@ class LineFilter(object):
         self.extract()
         self.transform()
         self.load()
+        self.notify()
         
     def filter_bookmakers(self):
         """
@@ -175,23 +192,130 @@ class LineFilter(object):
         self.best_lines['home_team'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['home_team'], x['sport']), axis=1)
         self.best_lines['away_team'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['away_team'], x['sport']), axis=1)
         self.best_lines['outcome'] = self.best_lines.apply(lambda x: self.lambda_fuzzy_wuzzy(x['outcome'], x['sport']), axis=1)
-        
+        self.average_odds['home_team'] = self.average_odds.apply(lambda x: self.lambda_fuzzy_wuzzy(x['home_team'], x['sport']), axis=1)
+        self.average_odds['away_team'] = self.average_odds.apply(lambda x: self.lambda_fuzzy_wuzzy(x['away_team'], x['sport']), axis=1) 
+        self.average_odds['outcome'] = self.average_odds.apply(lambda x: self.lambda_fuzzy_wuzzy(x['outcome'], x['sport']), axis=1)
         
     def lambda_fuzzy_wuzzy(self, team_name, sport) -> str:
         """
         Helper function for fuzzywuzzy to match team names
         """
-        teams = self.all_betting_lines[self.all_betting_lines['sport'] == sport]['home_team'].unique()
-        print(teams)
+        teams = self.team_names[self.team_names['sport'] == sport]['team_name'].to_list()
+        
+        if not teams:
+            print(f"No teams found for {sport} {team_name}")
+            return team_name    
         if team_name.lower() == 'draw':
             return 'draw'
-        out = process.extractOne(team_name, teams, scorer=fuzz.token_set_ratio, score_cutoff= 75)
-        print(team_name, out)
+        out = process.extractOne(team_name, teams, scorer=fuzz.token_set_ratio, score_cutoff= 80)
+        print(team_name, out, sport)
         if out is None:
-            return None
+            return np.nan
         else:
             return out[0]
       
+    def generate_unique_hash(self, home_team, away_team, outcome, start_datetime):
+        """
+        Generates a unique hash for each line based on the team names, outcome, and start time
+        in order to avoid duplicate lines in the database
+        
+        Args:
+            home_team (str): the home team name
+            away_team (str): the away team name
+            outcome (str): the outcome of the line
+            start_datetime (datetime.datetime): the event start time
+
+        Returns:
+            str: the unique hash for the line
+        """
+        # Concatenate the relevant information into a string
+        data_string = f"{home_team}-{away_team}-{outcome}-{start_datetime}"
+
+        # Hash the string using SHA-256
+        hashed_data = hashlib.sha256(data_string.encode()).hexdigest()
+        return hashed_data
+
+    def merge_with_reccommended_bets_archive(self):
+        """
+        Merges the plus_ev_bets table with the reccommended_bets_archive table to filter out the bets that have already been reccommended
+        """
+        self.reccommended_bets_archive = pd.concat([self.reccommended_bets_archive, self.bets_to_reccommend])
+        self.reccommended_bets_archive = self.reccommended_bets_archive.drop_duplicates(subset=['id']) # should be redundant
+
+    def get_bets_to_notify(self):
+        """
+        Filters the plus_ev_bets table for the bets that have not already been reccommended
+        """
+        self.bets_to_reccommend = self.plus_ev_bets[~self.plus_ev_bets['id'].isin(self.reccommended_bets_archive['id'])]
+        
+    def send_alerts(self):
+        """
+        Sends alerts for the bets that have not already been reccommended
+        """
+        for index, row in self.bets_to_reccommend.iterrows():
+            msg = f"{row['home_team']} vs {row['away_team']} {row['outcome']} at {row['sportsbook']} has a {row['expected_value']} expected value and a {row['kelly']} kelly criterion"
+            self.discord.send_msg(msg)
+            
+    def create_and_send_notification(self) -> None:
+        """
+        Generates the notification that will be sent to the discord server to
+        notify of treades
+        """
+        if self.bets_to_reccommend.empty:
+            return
+        intro_msg = ":rotating_light::rotating_light: Potential Bets Found! :rotating_light::rotating_light:\n"
+        self.discord.send_msg(intro_msg)
+        for i, row in self.bets_to_reccommend.iterrows():
+            date = row['date'].strftime("%m/%d %I:%M %p")
+            american_thresh = "+" + \
+                str(row['american_thresh']) if row['american_thresh'] > 0 else str(
+                    row['american_thresh'])
+            american_best = "+" + \
+                str(row['american_odds_best']) if row['american_odds_best'] > 0 else str(
+                    row['american_odds_best'])
+            msg = f"{date} {row['away_team']} @ {row['home_team']}\n"
+            msg += f"Bet on {row['odds_team']} Moneyline with {row['bookmaker']}\n"
+            msg += f"Current Odds: {row['odds']} ({american_best}).\n"
+            msg += f"The bet is good if the odds are at least {round(row['thresh'], 2)} ({american_thresh})\n"
+            msg += "Using Kelly Criterion, we reccommend betting the following percentages of your betting bankroll: \n"
+            msg += f"Full Kelly: {round(row['kelly'] * 100)}%\n"
+            msg += f"Half Kelly: {round(row['half_kelly'] * 100)}%\n"
+            msg += "\n\n"
+            self.discord.send_msg(msg)
+
+        self.discord.send_msg("Good Luck!!")
+    
+    def post_archive_to_sheets(self):
+        """
+        Posts the desired columns of the archive to google sheets
+        """
+        json_perms = "sportsbook-scraping-363802-5ed6e9e4d35c.json" 
+
+        # Define the scope and credentials
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_name(json_perms, scope)
+
+        # Authorize the client
+        client = gspread.authorize(creds)
+
+        # Open the Google Sheet by its title
+        sheet = client.open('Sports Betting Log').sheet1  # Replace 'Your Google Sheet Title' with your sheet's title
+        
+        desired_columns = ['id','sport', 'start_time', 'home_team', 'away_team', 'outcome','sportsbook', 
+                 'decimal_odds', 'avg_odds', "kelly", "half_kelly", "expected_value"]
+        df = self.reccommended_bets_archive[desired_columns]
+        
+        sheet.update('A1', df)
+        self.logger.debug(f"Posted Reccommended bets archive to Google Sheets")
+        
+    def notify(self):
+        """
+        Sends the alerts and posts the archive to google sheets
+        """
+        self.send_alerts()
+        self.post_archive_to_sheets()
+    
+    
 if __name__ == "__main__":
     lf = LineFilter()
     lf.run_etl()

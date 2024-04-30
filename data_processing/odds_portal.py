@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 import time
 import uuid
 from bs4 import BeautifulSoup
@@ -42,6 +43,8 @@ LEAGUE_URLS = {
 
 class OddsPortalScraper:
     def __init__(self, league_urls=LEAGUE_URLS):
+        self.logger = logging.getLogger("odds_portal")   
+        self.configure_logger()
         self.league_urls = league_urls
         self.engine = get_sqlalchemy_engine()
         op = webdriver.ChromeOptions()
@@ -57,6 +60,18 @@ class OddsPortalScraper:
             service=Service(ChromeDriverManager().install()), options=op
         )
         self.data = pd.DataFrame()
+        
+    def configure_logger(self):
+        self.logger.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s')
+        ch = logging.StreamHandler()
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+        # add file handler
+        fh = logging.FileHandler("odds_portal.log")
+        fh.setFormatter(formatter)
+        self.logger.addHandler(fh)
+        
 
     def odds_portal_login(self):
         self.web.get("https://www.oddsportal.com/login/")
@@ -73,6 +88,7 @@ class OddsPortalScraper:
         pswd.send_keys(ODDS_PORTAL_PASSWORD)
         login = self.web.find_element(By.XPATH, login_xpath)
         login.click()
+        self.logger.info("Logged in to OddsPortal")
 
     def get_avg_odds(self, sport_key, league_url) -> pd.DataFrame:
         self.web.get(league_url)
@@ -173,6 +189,7 @@ class OddsPortalScraper:
         df = pd.concat(dfs)
         df = df.reset_index(drop=True)
         self.data = df
+        self.logger.debug(f"Extracted {len(df)} odds avg odds entries")
         return 0
 
     def transform_odds(self):
@@ -189,19 +206,24 @@ class OddsPortalScraper:
 
     def load_odds(self):
         r = self.data.to_sql('avg_odds', self.engine, if_exists='replace', index=False)
-        print(f"Loaded {r} rows into avg_odds")
+        self.logger.info(f"Loaded {r} rows into avg_odds")
 
     def run_etl(self):
-        r = self.extract_odds()
-        if r != 0:
-            return r
-        r = self.transform_odds()
-        if r != 0:
-            return r
-        r = self.load_odds()
-        if r != 0:
-            return r
-        return 0
+        try:
+            r = self.extract_odds()
+        except Exception as e:
+            self.logger.error("Failed to extract odds")
+            self.logger.error(e)
+        try:
+            r = self.transform_odds()
+        except Exception as e:
+            self.logger.error("Failed to transform odds")
+            self.logger.error(e)
+        try:
+            r = self.load_odds()
+        except Exception as e:
+            self.logger.error("Failed to transform odds")
+            self.logger.error(e)
         
     def run(self):
         self.odds_portal_login()
@@ -209,6 +231,7 @@ class OddsPortalScraper:
         while datetime.now() < end_time:
             self.run_etl()
             time.sleep(SLEEP_TIME_MINUTES * 60)
+        self.logger.info("Shutting down gracefully")
             
 
 

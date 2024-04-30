@@ -1,0 +1,120 @@
+{
+  "teams": [
+    {
+      "name": "Atlanta United FC",
+      "abbreviation": "ATL"
+    },
+    {
+      "name": "Chicago Fire FC",
+      "abbreviation": "CHI"
+    },
+    {
+      "name": "Colorado Rapids",
+      "abbreviation": "COL"
+    },
+    {
+      "name": "Columbus Crew SC",
+      "abbreviation": "CLB"
+    },
+    {
+      "name": "D.C. United",
+      "abbreviation": "DCU"
+    },
+    {
+      "name": "FC Cincinnati",
+      "abbreviation": "CIN"
+    },
+    {
+      "name": "FC Dallas",
+      "abbreviation": "DAL"
+    },
+    {
+      "name": "Houston Dynamo FC",
+      "abbreviation": "HOU"
+    },
+    {
+      "name": "Inter Miami CF",
+      "abbreviation": "MIA"
+    },
+    {
+      "name": "LA Galaxy",
+      "abbreviation": "LA"
+    },
+    {
+      "name": "Los Angeles FC",
+      "abbreviation": "LAFC"
+    },
+    {
+      "name": "Minnesota United FC",
+      "abbreviation": "MIN"
+    },
+    {
+      "name": "Montreal Impact",
+      "abbreviation": "MTL"
+    },
+    {
+      "name": "Nashville SC",
+      "abbreviation": "NSH"
+    },
+    {
+      "name": "New England Revolution",
+      "abbreviation": "NE"
+    },
+    {
+      "name": "New York City FC",
+      "abbreviation": "NYCFC"
+    },
+    {
+      "name": "New York Red Bulls",
+      "abbreviation": "RBNY"
+    },
+    {
+      "name": "Orlando City SC",
+      "abbreviation": "ORL"
+    },
+    {
+      "name": "Philadelphia Union",
+      "abbreviation": "PHI"
+    },
+    {
+      "name": "Portland Timbers",
+      "abbreviation": "POR"
+    },
+    {
+      "name": "Real Salt Lake",
+      "abbreviation": "RSL"
+    },
+    {
+      "name": "San Jose Earthquakes",
+      "abbreviation": "SJ"
+    },
+    {
+      "name": "Seattle Sounders FC",
+      "abbreviation": "SEA"
+    },
+    {
+      "name": "Sporting Kansas City",
+      "abbreviation": "SKC"
+    },
+    {
+      "name": "Toronto FC",
+      "abbreviation": "TOR"
+    },
+    {
+      "name": "Vancouver Whitecaps FC",
+      "abbreviation": "VAN"
+    },
+    {
+      "name": "Austin FC",
+      "abbreviation": "AUS"
+    },
+    {
+      "name": "Charlotte FC",
+      "abbreviation": "CHA"
+    },
+    {
+      "name": "St. Louis City SC",
+      "abbreviation": "STL"
+    }
+  ]
+}

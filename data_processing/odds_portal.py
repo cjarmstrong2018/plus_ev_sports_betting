@@ -43,34 +43,51 @@ LEAGUE_URLS = {
 
 class OddsPortalScraper:
     def __init__(self, league_urls=LEAGUE_URLS):
-        self.logger = logging.getLogger("odds_portal")   
-        self.configure_logger()
-        self.league_urls = league_urls
-        self.engine = get_sqlalchemy_engine()
-        op = webdriver.ChromeOptions()
-        op.add_argument(
-            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
-        )
-        # op.add_argument('headless')
-        op.add_argument("--disable-web-security")
-        op.add_argument("no-sandbox")
-        op.add_argument("--disable-blink-features=AutomationControlled")
-        op.add_argument("--log-level=3")
-        self.web = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()), options=op
-        )
-        self.data = pd.DataFrame()
+        self.svc_name = "odds_portal"
+        self.logger = None  
+        self.init_logger()
+        try:
+            self.league_urls = league_urls
+            self.engine = get_sqlalchemy_engine()
+            op = webdriver.ChromeOptions()
+            op.add_argument(
+                "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36"
+            )
+            op.add_argument("--disable-web-security")
+            op.add_argument("no-sandbox")
+            op.add_argument("--disable-blink-features=AutomationControlled")
+            op.add_argument("--log-level=3")
+            self.web = webdriver.Chrome(
+                service=Service(ChromeDriverManager().install()), options=op
+            )
+            self.logger.debug("Initialized Chrome webdriver")
+            self.web.minimize_window()
+            self.data = pd.DataFrame()
+        except Exception as e:
+            self.logger.error("Failed to initialize OddsPortalScraper")
+            self.logger.error(e)
         
-    def configure_logger(self):
-        self.logger.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s')
-        ch = logging.StreamHandler()
-        ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
-        # add file handler
-        fh = logging.FileHandler("odds_portal.log")
-        fh.setFormatter(formatter)
-        self.logger.addHandler(fh)
+
+    def init_logger(self, log_lvl=logging.DEBUG, verbose=True) -> None:
+        logger = logging.getLogger("odds_portal")
+        logger.setLevel(log_lvl)
+        formatter = logging.Formatter(
+            "[%(asctime)s][%(name)s][%(levelname)s]: %(message)s"
+        )
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(log_lvl)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        current_file_path = os.path.abspath(__file__)
+        current_file_directory = os.path.dirname(current_file_path)
+        logs_dir = os.path.join(current_file_directory, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        log_file_name = f"{self.svc_name}.log"
+        log_file_path = os.path.join(logs_dir, log_file_name)
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        self.logger = logger
         
 
     def odds_portal_login(self):
@@ -237,4 +254,8 @@ class OddsPortalScraper:
 
 if __name__ == "__main__":
     scraper = OddsPortalScraper()
-    scraper.run()
+    try:
+        scraper.run()
+    except Exception as e:
+        scraper.logger.error("Failed to run scraper")
+        scraper.logger.error(e)

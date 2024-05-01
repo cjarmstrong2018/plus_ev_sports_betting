@@ -12,6 +12,7 @@ from fuzzywuzzy import process
 from DiscordAlerts import DiscordAlert
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import logging
 
 from utils import basic_kelly_criterion
 
@@ -54,7 +55,10 @@ class LineFilter(object):
         for those that are beyond the necessary threshold form the mean odds. 
         writes those lines to the database in the table plus_ev_bets
         """ 
+        self.logger = None
+        self.init_logger()
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
+        self.svc_name = "line_filter"
         self._alpha = float(ALPHA)
         self.model = pickle.load(open('model.pkl', 'rb'))
         self.discord = DiscordAlert()
@@ -129,7 +133,7 @@ class LineFilter(object):
         # select the best line for each outcome using group by
         idx_max = self.all_betting_lines.groupby(['sport', 'home_team', 'away_team', 'start_time', 'outcome'])['decimal_odds'].idxmax()
         self.best_lines =  self.all_betting_lines.iloc[idx_max].sort_values('start_time')
-        print(f"Best lines shape: {self.best_lines.shape}")
+        self.logger.debug(f"Best lines shape: {self.best_lines.shape}")
         
     def necessary_calculations(self):
         """
@@ -180,7 +184,7 @@ class LineFilter(object):
         while datetime.now() < end_time:
             self.run_etl()
             if self.all_betting_lines.empty:
-                print("No more games today, shutting down")
+                self.logger.debug("No more games today, shutting down")
                 break
             time.sleep(TIME_SLEEP_MINUTES * 60)
       
@@ -203,12 +207,12 @@ class LineFilter(object):
         teams = self.team_names[self.team_names['sport'] == sport]['team_name'].to_list()
         
         if not teams:
-            print(f"No teams found for {sport} {team_name}")
+            self.logger.debug(f"No teams found for {sport} {team_name}")
             return team_name    
         if team_name.lower() == 'draw':
             return 'draw'
         out = process.extractOne(team_name, teams, scorer=fuzz.token_set_ratio, score_cutoff= 80)
-        print(team_name, out, sport)
+        self.logger.debug(team_name, out, sport)
         if out is None:
             return np.nan
         else:
@@ -314,10 +318,28 @@ class LineFilter(object):
         """
         self.send_alerts()
         self.post_archive_to_sheets()
-    
+        
+    def init_logger(self, log_lvl=logging.DEBUG, verbose=True) -> None:
+        logger = logging.getLogger("line_filter")
+        logger.setLevel(log_lvl)
+        formatter = logging.Formatter(
+            "[%(asctime)s][%(name)s][%(levelname)s]: %(message)s"
+        )
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(log_lvl)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        current_file_path = os.path.abspath(__file__)
+        current_file_directory = os.path.dirname(current_file_path)
+        logs_dir = os.path.join(current_file_directory, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        log_file_name = f"{self.svc_name}.log"
+        log_file_path = os.path.join(logs_dir, log_file_name)
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        self.logger = logger
     
 if __name__ == "__main__":
     lf = LineFilter()
-    lf.run_etl()
-    print("ETL process complete")  
-        
+    lf.run()    

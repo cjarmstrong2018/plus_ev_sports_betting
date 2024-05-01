@@ -55,22 +55,37 @@ class OddsAPI(object):
 
 class OddsAPIExtractor:
     def __init__(self, api_key=ODDS_API_KEY):
-        self.logger = logging.getLogger("OddsAPIExtractor")
-        self.configure_logger()
+        self.svc_name = "odds_api"
+        self.logger = None
+        self.init_logger()
         self.api = OddsAPI(api_key)
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
-        
         self.extracted_sports = None
         self.sports_table = pd.DataFrame()
         self.extracted_odds = pd.DataFrame()
         self.odds_table = pd.DataFrame()
         
-    def configure_logger(self):
-        self.logger.setLevel(logging.INFO)
-        formatter = logging.Formatter('[%(asctime)s][%(name)s][%(levelname)s] - %(message)s')
-        ch = logging.StreamHandler()
-        ch.setFormatter(formatter)
-        self.logger.addHandler(ch)
+    def init_logger(self, log_lvl=logging.DEBUG, verbose=True) -> None:
+        logger = logging.getLogger(self.svc_name)
+        logger.setLevel(log_lvl)
+        formatter = logging.Formatter(
+            "[%(asctime)s][%(name)s][%(levelname)s]: %(message)s"
+        )
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(log_lvl)
+        console_handler.setFormatter(formatter)
+        logger.addHandler(console_handler)
+        current_file_path = os.path.abspath(__file__)
+        current_file_directory = os.path.dirname(current_file_path)
+        logs_dir = os.path.join(current_file_directory, "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        log_file_name = f"{self.svc_name}.log"
+        log_file_path = os.path.join(logs_dir, log_file_name)
+        file_handler = logging.FileHandler(log_file_path)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+        self.logger = logger
+        
         
     def extract_sports(self):
         """

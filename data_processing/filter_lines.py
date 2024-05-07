@@ -19,7 +19,7 @@ from utils import basic_kelly_criterion
 load_dotenv()
 SQLALCHEMY_DATABASE_URI = 'sqlite:///../sports_betting.db'
 WEBSITE_URL = ''
-TIME_SLEEP_MINUTES = 3
+TIME_SLEEP_MINUTES = 1
 ALPHA = os.getenv("ALPHA")
 
 BOOKMAKERS = {
@@ -55,6 +55,7 @@ class LineFilter(object):
         for those that are beyond the necessary threshold form the mean odds. 
         writes those lines to the database in the table plus_ev_bets
         """ 
+        self.svc_name = "line_filter"
         self.logger = None
         self.init_logger()
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
@@ -124,6 +125,7 @@ class LineFilter(object):
         df = pd.merge(best_lines, avg_odds, on=['sport', 'home_team', 'away_team', 'outcome'], how='inner', suffixes=('', '_y'))
         df = df[['sport', 'start_time', 'home_team', 'away_team', 'outcome','sportsbook', 
                  'decimal_odds', 'avg_odds', 'best_odds_update_time', 'avg_odds_update_time']]
+        df = df[df['start_time'] > pd.to_datetime('now').tz_localize('US/Central')]
         self.merged_df = df
       
     def compute_best_lines(self) -> None:
@@ -180,7 +182,6 @@ class LineFilter(object):
         Runs the full ETL process every 5 minutes
         """
         end_time = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
-        self.extract_sports()
         while datetime.now() < end_time:
             self.run_etl()
             if self.all_betting_lines.empty:
@@ -212,7 +213,7 @@ class LineFilter(object):
         if team_name.lower() == 'draw':
             return 'draw'
         out = process.extractOne(team_name, teams, scorer=fuzz.token_set_ratio, score_cutoff= 80)
-        self.logger.debug(team_name, out, sport)
+        self.logger.debug(f"{team_name}, {out}, {sport}")
         if out is None:
             return np.nan
         else:
@@ -250,14 +251,18 @@ class LineFilter(object):
         """
         Filters the plus_ev_bets table for the bets that have not already been reccommended
         """
-        self.bets_to_reccommend = self.plus_ev_bets[~self.plus_ev_bets['id'].isin(self.reccommended_bets_archive['id'])]
+        if self.reccommended_bets_archive.empty:
+            self.bets_to_reccommend = self.plus_ev_bets
+        else:
+            self.bets_to_reccommend = self.plus_ev_bets[~self.plus_ev_bets['id'].isin(self.reccommended_bets_archive['id'])]
         
     def send_alerts(self):
         """
         Sends alerts for the bets that have not already been reccommended
         """
         for index, row in self.bets_to_reccommend.iterrows():
-            msg = f"{row['home_team']} vs {row['away_team']} {row['outcome']} at {row['sportsbook']} has a {row['expected_value']} expected value and a {row['kelly']} kelly criterion"
+            msg = f"{row['home_team']} vs {row['away_team']} {row['outcome']} at {row['sportsbook']} has a {round(row['expected_value'], 2)} EV. \n "
+            msg += f"Bet on {row['outcome']} with {row['sportsbook']} at {row['decimal_odds']} odds. And bet on nothing lower than {row['thresh']}\n"
             self.discord.send_msg(msg)
             
     def create_and_send_notification(self) -> None:
@@ -305,11 +310,13 @@ class LineFilter(object):
         # Open the Google Sheet by its title
         sheet = client.open('Sports Betting Log').sheet1  # Replace 'Your Google Sheet Title' with your sheet's title
         
-        desired_columns = ['id','sport', 'start_time', 'home_team', 'away_team', 'outcome','sportsbook', 
-                 'decimal_odds', 'avg_odds', "kelly", "half_kelly", "expected_value"]
+        desired_columns = ['sport', 'start_time', 'home_team', 'away_team', 'outcome','sportsbook', 
+                 'decimal_odds', 'avg_odds', "thresh", "kelly", "half_kelly", "expected_value"]
         df = self.reccommended_bets_archive[desired_columns]
-        
-        sheet.update('A1', df)
+        if df.empty:
+            return
+
+        sheet.update(df.values.tolist(), 'A2')
         self.logger.debug(f"Posted Reccommended bets archive to Google Sheets")
         
     def notify(self):

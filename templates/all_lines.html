@@ -25,13 +25,13 @@
     <h1>Best Lines For All Events</h1>
     <p>
       Now I don't think you should bet on these, but if you so desire to be the
-      little gambling degen that you are, I would use these lines.
+      little gambling degen that you are, I would use these lines. For an explanation of each column, see the footnotes below the table.
     </p>
     <p>
       Here you will also see the expected value, kelly criterion, and half kelly
       criterion for each bet. If you don't know what those are, I would suggest
       you look them up before you start betting. bets that I think have some
-      positive EV will be highlighted in green
+      positive EV will be highlighted in green.
     </p>
 
     <table id="bets-table">
@@ -98,6 +98,22 @@
         {% endfor %}
       </tbody>
     </table>
+
+    <ul id="footnotes">
+      <li><strong>Outcome:</strong> The outcome the line is referring to.</li>
+      <li><strong>Sportsbook:</strong> The sportsbook offering the line.</li>
+      <li><strong>Decimal Odds:</strong> The odds decimal odds of the best line offered across all legal sportsbooks in Illinois</li>
+      <li><strong>Avg Odds:</strong> The average odds across multiple sportsbooks.</li>
+      <li><strong>Mean Implied Probability:</strong> The implied probability of the bet paying off based on the average odds offered.</li>
+      <li><strong>Best Implied Probability:</strong> The implied probability based on the best odds offered (the line listed in Decimal Odds).</li>
+      <li><strong>Predicted Probability:</strong> The predicted probability of the bet paying off based on my model.</li>
+      <li><strong>Thresh:</strong> The odds threshold for which placing a bet is positive expected value based on the model.</li>
+      <li><strong>Expected Value (EV):</strong> Go back to stats 101 if you don't know what this is.</li>
+      <li><strong><a href="https://en.wikipedia.org/wiki/Kelly_criterion">Kelly Criterion:</a></strong> A formula used to determine the optimal bet size based on perceived edge and bankroll.</li>
+      <li><strong>Half Kelly:</strong> A variation of the Kelly Criterion using half of the optimal bet size.</li>
+      <!-- Add more footnotes as needed -->
+    </ul>
+
 
     <script>
       document.addEventListener("DOMContentLoaded", function () {

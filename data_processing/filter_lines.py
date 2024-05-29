@@ -61,7 +61,7 @@ class LineFilter(object):
         self.engine = create_engine(SQLALCHEMY_DATABASE_URI)
         self.svc_name = "line_filter"
         self._alpha = float(ALPHA)
-        self.model = pickle.load(open('model.pkl', 'rb'))
+        # self.model = pickle.load(open('model.pkl', 'rb'))
         self.discord = DiscordAlert()
         self.team_names = pd.DataFrame()
         self.average_odds = pd.DataFrame()
@@ -125,7 +125,14 @@ class LineFilter(object):
         df = pd.merge(best_lines, avg_odds, on=['sport', 'home_team', 'away_team', 'outcome'], how='inner', suffixes=('', '_y'))
         df = df[['sport', 'start_time', 'home_team', 'away_team', 'outcome','sportsbook', 
                  'decimal_odds', 'avg_odds', 'best_odds_update_time', 'avg_odds_update_time']]
-        df = df[df['start_time'] > pd.to_datetime('now').tz_localize('US/Central')]
+        df['start_time'] = pd.to_datetime(df['start_time'])
+        # Get current time in US/Central timezone
+        # now = datetime.now(timezone('US/Central'))
+
+        # # Convert 'now' to Pandas Timestamp object
+        # now_timestamp = pd.Timestamp(now)
+
+        df = df[df['start_time'] > datetime.now()]
         self.merged_df = df
       
     def compute_best_lines(self) -> None:
@@ -323,8 +330,12 @@ class LineFilter(object):
         """
         Sends the alerts and posts the archive to google sheets
         """
-        self.send_alerts()
-        self.post_archive_to_sheets()
+        try:
+            self.send_alerts()
+            self.post_archive_to_sheets()
+        except Exception as e:
+            self.logger.error(f"Error sending alerts: {e}")
+            self.discord.send_msg(f"Error sending alerts: {e}")
         
     def init_logger(self, log_lvl=logging.DEBUG, verbose=True) -> None:
         logger = logging.getLogger("line_filter")
